@@ -1,0 +1,34 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: shop-prod
+resources:
+  - namespace.yaml
+  - ../../../../lab05-kubernetes/k8s/base
+  - ../../../../lab07-observability/k8s
+  - sealed-db.yaml                # scripts/seal-db-secret.sh (dùng key của cluster capstone)
+  - backup.yaml                   # CronJob pg_dump → S3 mỗi 15 phút (RPO)
+images:
+  - name: shopmini
+    newName: ghcr.io/YOUR_GITHUB_USER/shopmini
+    newTag: "1.0.0"
+configMapGenerator:
+  - name: backup-config
+    literals:
+      - BACKUP_BUCKET=BUCKET_PLACEHOLDER   # output backup_bucket của stack persistent
+      - AWS_REGION=us-east-1
+patches:
+  - target: { kind: Ingress, name: shopmini }
+    patch: |-
+      - op: replace
+        path: /spec/rules/0/host
+        value: shop.EIP_PLACEHOLDER.nip.io
+  - target: { kind: Deployment, name: shopmini }
+    patch: |-
+      - op: add
+        path: /spec/template/metadata/labels/app.kubernetes.io~1version
+        value: capstone
+  - target: { kind: HorizontalPodAutoscaler, name: shopmini }
+    patch: |-
+      - op: replace
+        path: /spec/minReplicas
+        value: 2

@@ -1,0 +1,11 @@
+#!/bin/bash
+set -euxo pipefail
+IMDS=$(curl -sX PUT http://169.254.169.254/latest/api/token -H "X-aws-ec2-metadata-token-ttl-seconds: 300")
+AZ=$(curl -s -H "X-aws-ec2-metadata-token: $IMDS" http://169.254.169.254/latest/meta-data/placement/availability-zone)
+TOKEN=$(aws ssm get-parameter --region ${region} --name ${token_param} --with-decryption --query Parameter.Value --output text)
+curl -sfL https://get.k3s.io | INSTALL_K3S_CHANNEL=stable K3S_TOKEN="$TOKEN" sh -s - server \
+  --disable traefik \
+  --tls-san ${eip} \
+  --node-label "topology.kubernetes.io/zone=$AZ" \
+  --write-kubeconfig-mode 0644 \
+  --secrets-encryption

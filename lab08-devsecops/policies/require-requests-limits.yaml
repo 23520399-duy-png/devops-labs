@@ -1,0 +1,22 @@
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: require-requests-limits
+  annotations:
+    policies.kyverno.io/title: Bắt buộc requests & limits
+spec:
+  background: true
+  rules:
+    - name: containers-must-set-resources
+      match:
+        any:
+          - resources: { kinds: [Pod], namespaces: ["shop-*"] }
+      validate:
+        failureAction: Enforce
+        message: "Mọi container phải có requests.cpu, requests.memory và limits.memory."
+        pattern:
+          spec:
+            containers:
+              - resources:
+                  requests: { cpu: "?*", memory: "?*" }
+                  limits: { memory: "?*" }

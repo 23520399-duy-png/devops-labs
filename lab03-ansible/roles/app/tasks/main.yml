@@ -1,0 +1,24 @@
+---
+- name: Chạy container ứng dụng
+  community.docker.docker_container:
+    name: "{{ app_name }}"
+    image: "{{ app_image }}"
+    pull: missing
+    state: started
+    restart_policy: unless-stopped
+    published_ports: ["{{ app_port }}:{{ app_container_port }}"]
+    read_only: true
+    tmpfs: ["/tmp"]
+    env: "{{ app_env }}"
+    labels:
+      managed-by: ansible
+  register: app_container
+
+- name: Chờ ứng dụng healthy
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:{{ app_port }}{{ app_health_path }}"
+    status_code: 200
+  register: app_health
+  until: app_health.status == 200
+  retries: "{{ app_health_retries }}"
+  delay: "{{ app_health_delay }}"

@@ -1,0 +1,43 @@
+# KHÔNG nằm trong GitOps (chạy tay khi khôi phục): kubectl -n shop-prod create -f restore-job.yaml
+apiVersion: batch/v1
+kind: Job
+metadata:
+  generateName: pg-restore-
+  namespace: shop-prod
+  labels: { app.kubernetes.io/name: pg-restore }
+spec:
+  backoffLimit: 1
+  template:
+    metadata:
+      labels: { app.kubernetes.io/name: pg-backup }   # dùng chung NetworkPolicy với job backup
+    spec:
+      restartPolicy: Never
+      securityContext: { runAsNonRoot: true, seccompProfile: { type: RuntimeDefault } }
+      initContainers:
+        - name: download
+          image: amazon/aws-cli:2.22.0
+          securityContext: { runAsUser: 1000, allowPrivilegeEscalation: false, capabilities: { drop: ["ALL"] } }
+          envFrom: [{ configMapRef: { name: backup-config } }]
+          env: [{ name: HOME, value: /tmp }]
+          command: ["sh", "-c"]
+          args:
+            - |
+              LATEST=$(aws s3 ls "s3://$BACKUP_BUCKET/db/" | sort | tail -1 | awk '{print $4}')
+              echo "Khôi phục từ $LATEST"; aws s3 cp "s3://$BACKUP_BUCKET/db/$LATEST" /backup/latest.sql.gz
+          resources: { requests: { cpu: 50m, memory: 64Mi }, limits: { memory: 256Mi } }
+          volumeMounts: [{ name: backup, mountPath: /backup }, { name: tmp, mountPath: /tmp }]
+      containers:
+        - name: restore
+          image: postgres:16-alpine
+          securityContext: { runAsUser: 70, allowPrivilegeEscalation: false, capabilities: { drop: ["ALL"] } }
+          env:
+            - name: PGUSER
+              valueFrom: { secretKeyRef: { name: shopmini-db, key: username } }
+            - name: PGPASSWORD
+              valueFrom: { secretKeyRef: { name: shopmini-db, key: password } }
+          command: ["sh", "-c", "gunzip -c /backup/latest.sql.gz | psql -h postgres -d shop -v ON_ERROR_STOP=1 && psql -h postgres -d shop -c 'select count(*) from orders'"]
+          resources: { requests: { cpu: 50m, memory: 64Mi }, limits: { memory: 256Mi } }
+          volumeMounts: [{ name: backup, mountPath: /backup }]
+      volumes:
+        - { name: backup, emptyDir: {} }
+        - { name: tmp, emptyDir: {} }

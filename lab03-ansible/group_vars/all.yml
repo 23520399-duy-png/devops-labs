@@ -1,0 +1,18 @@
+# Biến dùng chung cho mọi inventory (đặt cạnh playbook-dir nên local & aws đều đọc được)
+timezone: Asia/Ho_Chi_Minh
+deploy_user: deploy
+deploy_user_pubkey: "{{ lookup('ansible.builtin.file', lookup('ansible.builtin.env', 'HOME') + '/.ssh/id_ed25519.pub') }}"
+base_packages: [curl, jq, htop, vim, ca-certificates, tar, unzip]
+
+sshd_port: 22
+sshd_allow_users: ["{{ deploy_user }}", ubuntu, ec2-user]
+
+node_exporter_version: "1.8.2"
+node_exporter_port: 9100
+
+app_name: shopmini
+app_image: "ghcr.io/stefanprodan/podinfo:6.7.1"   # đổi thành image shopmini trong ECR/GHCR của bạn
+app_port: 8080
+app_container_port: 9898                          # podinfo: 9898 · shopmini: 8000
+app_health_path: /healthz
+app_env: {}

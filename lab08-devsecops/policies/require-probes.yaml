@@ -1,0 +1,23 @@
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: require-probes
+spec:
+  background: true
+  rules:
+    - name: api-must-have-probes
+      match:
+        any:
+          - resources:
+              kinds: [Pod]
+              namespaces: ["shop-*"]
+              selector:
+                matchLabels: { app.kubernetes.io/component: api }
+      validate:
+        failureAction: Enforce
+        message: "Container api phải có readinessProbe và livenessProbe."
+        pattern:
+          spec:
+            containers:
+              - readinessProbe: { "?*": "*" }
+                livenessProbe: { "?*": "*" }

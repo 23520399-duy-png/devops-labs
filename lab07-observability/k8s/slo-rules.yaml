@@ -1,0 +1,73 @@
+# SLO của shopmini: 99,5% request thành công trong 30 ngày → error budget 0,5%.
+# Cảnh báo theo "multi-window multi-burn-rate" (Google SRE Workbook, chương Alerting on SLOs).
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: shopmini-slo
+  labels: { app.kubernetes.io/name: shopmini }
+spec:
+  groups:
+    - name: shopmini-sli.recording
+      interval: 30s
+      rules:
+        # SLI: tỷ lệ lỗi 5xx (bỏ qua endpoint hạ tầng) theo nhiều cửa sổ thời gian
+        - record: shopmini:request_errors:ratio_rate5m
+          expr: |
+            sum by (namespace) (rate(http_requests_total{job="shopmini",status=~"5..",route!~"/healthz|/readyz|/metrics"}[5m]))
+            /
+            sum by (namespace) (rate(http_requests_total{job="shopmini",route!~"/healthz|/readyz|/metrics"}[5m]))
+        - record: shopmini:request_errors:ratio_rate30m
+          expr: |
+            sum by (namespace) (rate(http_requests_total{job="shopmini",status=~"5..",route!~"/healthz|/readyz|/metrics"}[30m]))
+            /
+            sum by (namespace) (rate(http_requests_total{job="shopmini",route!~"/healthz|/readyz|/metrics"}[30m]))
+        - record: shopmini:request_errors:ratio_rate1h
+          expr: |
+            sum by (namespace) (rate(http_requests_total{job="shopmini",status=~"5..",route!~"/healthz|/readyz|/metrics"}[1h]))
+            /
+            sum by (namespace) (rate(http_requests_total{job="shopmini",route!~"/healthz|/readyz|/metrics"}[1h]))
+        - record: shopmini:request_errors:ratio_rate6h
+          expr: |
+            sum by (namespace) (rate(http_requests_total{job="shopmini",status=~"5..",route!~"/healthz|/readyz|/metrics"}[6h]))
+            /
+            sum by (namespace) (rate(http_requests_total{job="shopmini",route!~"/healthz|/readyz|/metrics"}[6h]))
+        - record: shopmini:request_duration_seconds:p95_5m
+          expr: |
+            histogram_quantile(0.95, sum by (namespace, le) (rate(http_request_duration_seconds_bucket{job="shopmini",route!~"/healthz|/readyz|/metrics"}[5m])))
+
+    - name: shopmini-slo.alerts
+      rules:
+        # Burn rate 14,4 trong 1h (và 5m để tắt nhanh) → tiêu 2% budget/giờ → GỌI NGƯỜI TRỰC
+        - alert: ShopminiErrorBudgetBurnFast
+          expr: |
+            shopmini:request_errors:ratio_rate1h > (14.4 * 0.005)
+            and
+            shopmini:request_errors:ratio_rate5m > (14.4 * 0.005)
+          for: 2m
+          labels: { severity: page }
+          annotations:
+            summary: "shopmini ({{ $labels.namespace }}) đốt error budget rất nhanh"
+            description: "Tỷ lệ lỗi 1h = {{ $value | humanizePercentage }}. Hết budget 30 ngày trong ~2 ngày nếu giữ tốc độ này."
+            runbook_url: https://github.com/YOUR_GITHUB_USER/devops-labs/blob/main/lab07-observability/RUNBOOK.md#errorbudgetburn
+        # Burn rate 6 trong 6h (và 30m) → tạo ticket
+        - alert: ShopminiErrorBudgetBurnSlow
+          expr: |
+            shopmini:request_errors:ratio_rate6h > (6 * 0.005)
+            and
+            shopmini:request_errors:ratio_rate30m > (6 * 0.005)
+          for: 15m
+          labels: { severity: ticket }
+          annotations:
+            summary: "shopmini ({{ $labels.namespace }}) đốt error budget đều đặn"
+        - alert: ShopminiHighLatencyP95
+          expr: shopmini:request_duration_seconds:p95_5m > 0.5
+          for: 5m
+          labels: { severity: ticket }
+          annotations:
+            summary: "p95 latency shopmini > 500ms ({{ $value | humanizeDuration }})"
+        - alert: ShopminiNoTraffic
+          expr: absent(rate(http_requests_total{job="shopmini"}[10m]))
+          for: 10m
+          labels: { severity: ticket }
+          annotations:
+            summary: "Không thu được metric shopmini – scrape hỏng hay app chết?"

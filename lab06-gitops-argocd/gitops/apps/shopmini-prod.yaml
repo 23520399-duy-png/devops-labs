@@ -1,0 +1,24 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: shopmini-prod
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "2"
+spec:
+  project: shop
+  source:
+    repoURL: https://github.com/YOUR_GITHUB_USER/devops-labs.git
+    targetRevision: main
+    path: lab06-gitops-argocd/gitops/envs/prod
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: shop-prod
+  # Prod: vẫn tự đồng bộ, nhưng mọi thay đổi vào prod phải đi qua Pull Request được duyệt.
+  syncPolicy:
+    automated: { prune: true, selfHeal: true }
+    syncOptions: [CreateNamespace=false, ServerSideApply=true, RespectIgnoreDifferences=true]
+  ignoreDifferences:
+    - group: apps
+      kind: Deployment
+      jsonPointers: [/spec/replicas]     # replicas do HPA / Argo Rollouts quản lý

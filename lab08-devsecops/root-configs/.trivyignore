@@ -1,0 +1,3 @@
+# Copy vào gốc repo. MỖI dòng ignore phải kèm: lý do, người chấp nhận, ngày hết hạn xem xét lại.
+# Ví dụ (Bài 3 – bạn tự điền sau khi phân loại finding):
+# AVD-AWS-0054   # ALB HTTP không TLS – lab không có domain/ACM; chấp nhận trong môi trường học. duy, review 2026-12-31

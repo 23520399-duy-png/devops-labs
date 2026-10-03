@@ -1,0 +1,49 @@
+---
+- name: Cài Docker + Python SDK (Ubuntu)
+  ansible.builtin.apt:
+    name: [docker.io, python3-docker]
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+  when: ansible_os_family == 'Debian'
+
+- name: Cài Docker + pip (Amazon Linux)
+  ansible.builtin.dnf:
+    name: [docker, python3-pip]
+    state: present
+  when: ansible_os_family == 'RedHat'
+
+- name: Python SDK cho module community.docker (Amazon Linux)
+  ansible.builtin.pip:
+    name: docker>=7.0
+    state: present
+  when: ansible_os_family == 'RedHat'
+
+- name: Thư mục cấu hình docker
+  ansible.builtin.file:
+    path: /etc/docker
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Ghi daemon.json (xoay log, live-restore, no-new-privileges)
+  ansible.builtin.copy:
+    dest: /etc/docker/daemon.json
+    content: "{{ docker_daemon_config | to_nice_json }}\n"
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Restart docker
+
+- name: Docker chạy và tự khởi động
+  ansible.builtin.systemd_service:
+    name: docker
+    state: started
+    enabled: true
+
+- name: Cho user deploy dùng docker
+  ansible.builtin.user:
+    name: "{{ deploy_user }}"
+    groups: docker
+    append: true

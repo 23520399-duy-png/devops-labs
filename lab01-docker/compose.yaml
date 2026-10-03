@@ -1,0 +1,75 @@
+# Lab 01 – stack shopmini: nginx (edge) → api (FastAPI) → postgres + redis
+# Có 4 chỗ TODO bạn phải tự hoàn thiện. Lời giải: solution/compose.yaml
+name: shopmini
+
+x-hardening: &hardening          # YAML anchor: dùng lại cấu hình bảo mật cho nhiều service
+  security_opt: ["no-new-privileges:true"]
+  cap_drop: ["ALL"]
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:?set in .env}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set in .env}
+      POSTGRES_DB: ${POSTGRES_DB:?set in .env}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks: [backend]
+    deploy:
+      resources:
+        limits: { cpus: "1.0", memory: 512M }
+
+  cache:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--maxmemory", "64mb", "--maxmemory-policy", "allkeys-lru", "--save", ""]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks: [backend]
+
+  api:
+    build:
+      context: ../app
+      dockerfile: ../lab01-docker/Dockerfile      # Dockerfile CỦA BẠN (Bài 2)
+      args:
+        APP_VERSION: ${APP_VERSION:-dev}
+    image: shopmini:lab01
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+      REDIS_URL: redis://cache:6379/0
+      WORKERS: ${API_WORKERS:-2}
+      CHAOS_ENABLED: "true"
+    # TODO 1: api chỉ được khởi động khi db và cache đã HEALTHY (không phải chỉ "started").
+    # TODO 2: chạy với root filesystem chỉ-đọc (read_only) + tmpfs cho /tmp, áp dụng anchor *hardening.
+    # TODO 3: giới hạn tài nguyên: 1 CPU, 384M RAM.
+    networks: [backend, frontend]
+    # Lưu ý: KHÔNG publish port 8000 ra host – chỉ nginx được public.
+
+  nginx:
+    image: nginx:1.27-alpine
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+    # TODO 4: nginx chỉ khởi động khi api healthy; thêm healthcheck gọi http://127.0.0.1:8080/nginx-health
+    networks: [frontend]
+
+networks:
+  frontend: {}
+  backend:
+    internal: true        # mạng backend không có đường ra internet
+
+volumes:
+  pgdata: {}

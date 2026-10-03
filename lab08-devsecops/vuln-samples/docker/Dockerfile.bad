@@ -1,0 +1,8 @@
+FROM python:latest
+ADD https://example.com/tool.sh /usr/local/bin/tool.sh
+COPY . /app
+WORKDIR /app
+RUN pip install -r requirements.txt
+ENV AWS_SECRET_ACCESS_KEY=dummy-but-still-bad
+EXPOSE 22 8000
+CMD python -m uvicorn shopmini.main:app --host 0.0.0.0 --app-dir src

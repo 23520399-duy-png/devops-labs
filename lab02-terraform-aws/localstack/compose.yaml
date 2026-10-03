@@ -1,0 +1,14 @@
+# LocalStack (bản Community) – giả lập API AWS trên máy để luyện Terraform không tốn credit.
+# Hỗ trợ tốt: S3, EC2/VPC (subnet, route, IGW, NAT, EIP), IAM, CloudWatch Logs, SNS, SQS, SSM Parameter.
+# KHÔNG hỗ trợ ở bản Community: ELBv2 (ALB), Auto Scaling → phần đó phải chạy trên Learner Lab.
+services:
+  localstack:
+    image: localstack/localstack:latest
+    ports: ["4566:4566"]
+    environment:
+      SERVICES: s3,ec2,iam,sts,logs,sns,ssm
+      DEBUG: 0
+    volumes:
+      - lsdata:/var/lib/localstack
+volumes:
+  lsdata: {}

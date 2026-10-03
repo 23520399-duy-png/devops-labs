@@ -1,0 +1,8 @@
+---
+galaxy_info:
+  role_name: hardening
+  author: devops-labs
+  description: SSH, sysctl and package hardening (subset of CIS)
+  license: MIT
+  min_ansible_version: "2.15"
+dependencies: []

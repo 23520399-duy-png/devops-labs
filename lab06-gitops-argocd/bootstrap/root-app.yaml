@@ -1,0 +1,18 @@
+# App of Apps: Argo CD quản lý chính các Application khác nằm trong gitops/apps/
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: root
+  namespace: argocd
+  finalizers: ["resources-finalizer.argocd.argoproj.io"]
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/YOUR_GITHUB_USER/devops-labs.git
+    targetRevision: main
+    path: lab06-gitops-argocd/gitops/apps
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: argocd
+  syncPolicy:
+    automated: { prune: true, selfHeal: true }

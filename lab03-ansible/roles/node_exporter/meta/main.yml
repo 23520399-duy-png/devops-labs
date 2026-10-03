@@ -1,0 +1,8 @@
+---
+galaxy_info:
+  role_name: node_exporter
+  author: devops-labs
+  description: Prometheus node_exporter as a systemd service
+  license: MIT
+  min_ansible_version: "2.15"
+dependencies: []

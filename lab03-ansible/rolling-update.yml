@@ -1,0 +1,28 @@
+---
+# Rolling update: cập nhật từng máy một, dừng ngay nếu một máy hỏng.
+#   ansible-playbook -i inventories/aws/aws_ec2.yml rolling-update.yml -e app_image=<image:tag-mới>
+- name: Rolling update ứng dụng
+  hosts: all
+  become: true
+  serial: 1                  # TODO (Bài 4): thử "34%" rồi [1, "50%"] – khác nhau thế nào?
+  max_fail_percentage: 0     # một máy lỗi → dừng toàn bộ đợt, các máy còn lại giữ bản cũ
+  order: sorted
+  pre_tasks:
+    - name: Đánh dấu bắt đầu
+      ansible.builtin.debug:
+        msg: "Cập nhật {{ inventory_hostname }} → {{ app_image }}"
+    - name: Xác định loại máy
+      ansible.builtin.set_fact:
+        is_container: "{{ ansible_virtualization_type in ['docker', 'container', 'podman', 'containerd'] }}"
+        has_systemd: "{{ ansible_service_mgr == 'systemd' }}"
+  roles:
+    - role: app
+  post_tasks:
+    - name: Kiểm tra phiên bản đang chạy
+      community.docker.docker_container_info:
+        name: "{{ app_name }}"
+      register: info
+    - name: Xác nhận đúng image
+      ansible.builtin.assert:
+        that: info.container.Config.Image == app_image
+        fail_msg: "{{ inventory_hostname }} vẫn chạy {{ info.container.Config.Image }}"

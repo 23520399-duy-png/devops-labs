@@ -1,0 +1,63 @@
+# Giá trị Helm cho kube-prometheus-stack trên kind (cấu hình nhẹ cho máy 16 GB)
+fullnameOverride: kps
+grafana:
+  adminPassword: devops-labs          # môi trường học – production dùng secret riêng / SSO
+  ingress:
+    enabled: true
+    ingressClassName: nginx
+    hosts: [grafana.127.0.0.1.nip.io]
+  sidecar:
+    dashboards:
+      enabled: true
+      label: grafana_dashboard        # ConfigMap có nhãn này sẽ tự nạp thành dashboard
+      searchNamespace: ALL
+  additionalDataSources:
+    - name: Loki
+      type: loki
+      uid: loki
+      url: http://loki.monitoring.svc:3100
+      access: proxy
+prometheus:
+  ingress:
+    enabled: true
+    ingressClassName: nginx
+    hosts: [prometheus.127.0.0.1.nip.io]
+  prometheusSpec:
+    retention: 3d
+    scrapeInterval: 15s
+    evaluationInterval: 15s
+    # Lấy MỌI ServiceMonitor/PrometheusRule trong cluster, không chỉ cái có nhãn release=...
+    serviceMonitorSelectorNilUsesHelmValues: false
+    podMonitorSelectorNilUsesHelmValues: false
+    ruleSelectorNilUsesHelmValues: false
+    resources:
+      requests: { cpu: 200m, memory: 512Mi }
+      limits: { memory: 1536Mi }
+alertmanager:
+  ingress:
+    enabled: true
+    ingressClassName: nginx
+    hosts: [alertmanager.127.0.0.1.nip.io]
+  config:
+    route:
+      receiver: webhook
+      group_by: [alertname, namespace]
+      group_wait: 10s
+      group_interval: 1m
+      repeat_interval: 1h
+      routes:
+        - receiver: "null"
+          matchers: [alertname = "Watchdog"]
+        - receiver: webhook
+          matchers: [severity =~ "page|ticket|critical|warning"]
+    receivers:
+      - name: "null"
+      - name: webhook
+        webhook_configs:
+          - url: http://alert-receiver.monitoring.svc:8080/
+            send_resolved: true
+# kind không expose các thành phần control-plane này → tắt để khỏi báo "target down" giả
+kubeControllerManager: { enabled: false }
+kubeScheduler: { enabled: false }
+kubeEtcd: { enabled: false }
+kubeProxy: { enabled: false }

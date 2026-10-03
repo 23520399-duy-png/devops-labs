@@ -1,0 +1,3 @@
+---
+app_health_retries: 20
+app_health_delay: 3

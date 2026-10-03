@@ -1,0 +1,58 @@
+# Canary bằng Argo Rollouts: Rollout "mượn" pod template của Deployment (workloadRef),
+# chia traffic qua ingress-nginx, chạy AnalysisTemplate để tự quyết promote hay rollback.
+apiVersion: argoproj.io/v1alpha1
+kind: Rollout
+metadata:
+  name: shopmini
+spec:
+  replicas: 3
+  revisionHistoryLimit: 5
+  selector:
+    matchLabels: { app.kubernetes.io/name: shopmini, app.kubernetes.io/component: api }
+  workloadRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: shopmini
+    scaleDown: onsuccess        # Deployment gốc bị scale về 0 khi Rollout đã chạy ổn
+  strategy:
+    canary:
+      stableService: shopmini
+      canaryService: shopmini-canary
+      trafficRouting:
+        nginx:
+          stableIngress: shopmini
+      analysis:                 # phân tích chạy nền suốt quá trình canary
+        templates: [{ templateName: canary-health }]
+        startingStep: 1
+      steps:
+        - setWeight: 20
+        - pause: { duration: 60s }
+        - setWeight: 50
+        - pause: { duration: 60s }
+        - setWeight: 100
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: shopmini-canary
+spec:
+  selector: { app.kubernetes.io/name: shopmini, app.kubernetes.io/component: api }
+  ports:
+    - { name: http, port: 80, targetPort: http }
+---
+apiVersion: argoproj.io/v1alpha1
+kind: AnalysisTemplate
+metadata:
+  name: canary-health
+spec:
+  metrics:
+    # Lab 06: kiểm tra /readyz của bản canary mỗi 10s. Lab 07 sẽ thay bằng tỷ lệ lỗi từ Prometheus.
+    - name: canary-readyz
+      interval: 10s
+      failureLimit: 2
+      successCondition: result == "ready"
+      provider:
+        web:
+          url: http://shopmini-canary.shop-prod.svc.cluster.local/readyz
+          jsonPath: "{$.status}"
+          timeoutSeconds: 5

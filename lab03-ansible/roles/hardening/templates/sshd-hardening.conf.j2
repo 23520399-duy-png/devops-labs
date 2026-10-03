@@ -1,0 +1,14 @@
+# {{ ansible_managed }}
+Port {{ sshd_port }}
+PermitRootLogin no
+PasswordAuthentication no
+KbdInteractiveAuthentication no
+PubkeyAuthentication yes
+MaxAuthTries 3
+LoginGraceTime 30
+X11Forwarding no
+AllowAgentForwarding no
+ClientAliveInterval 300
+ClientAliveCountMax 2
+Banner /etc/issue.net
+AllowUsers {{ sshd_allow_users | join(' ') }}

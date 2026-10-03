@@ -1,0 +1,25 @@
+# Cluster kind 4 node: 1 control-plane + 3 worker, mỗi worker gắn nhãn "zone" khác nhau
+# để luyện topologySpreadConstraints (giả lập 3 AZ). Tắt CNI mặc định để cài Calico (NetworkPolicy).
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+name: devops
+networking:
+  disableDefaultCNI: true
+  podSubnet: 192.168.0.0/16
+nodes:
+  - role: control-plane
+    kubeadmConfigPatches:
+      - |
+        kind: InitConfiguration
+        nodeRegistration:
+          kubeletExtraArgs:
+            node-labels: "ingress-ready=true"
+    extraPortMappings:
+      - { containerPort: 80, hostPort: 80, protocol: TCP }
+      - { containerPort: 443, hostPort: 443, protocol: TCP }
+  - role: worker
+    labels: { topology.kubernetes.io/zone: zone-a }
+  - role: worker
+    labels: { topology.kubernetes.io/zone: zone-b }
+  - role: worker
+    labels: { topology.kubernetes.io/zone: zone-c }

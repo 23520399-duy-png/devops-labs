@@ -1,0 +1,6 @@
+# Copy thành backend.hcl, điền tên bucket từ output của bootstrap
+bucket       = "tfstate-<account-id>-<suffix>"
+key          = "lab02/dev/terraform.tfstate"
+region       = "us-east-1"
+encrypt      = true
+use_lockfile = true   # khóa state bằng S3 (Terraform ≥ 1.10) – không cần bảng DynamoDB

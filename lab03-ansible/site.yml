@@ -1,0 +1,28 @@
+---
+# Playbook chính: chạy cho cả fleet.
+#   Local:  ansible-playbook site.yml
+#   AWS:    ansible-playbook -i inventories/aws/aws_ec2.yml site.yml
+- name: Baseline cho mọi server
+  hosts: all
+  become: true
+  pre_tasks:
+    - name: Xác định máy đích là container hay VM (bỏ qua task cần systemd/kernel)
+      ansible.builtin.set_fact:
+        is_container: "{{ ansible_virtualization_type in ['docker', 'container', 'podman', 'containerd'] }}"
+        has_systemd: "{{ ansible_service_mgr == 'systemd' }}"
+      tags: [always]
+  roles:
+    - { role: common, tags: [common] }
+    - { role: hardening, tags: [hardening] }
+    - { role: node_exporter, tags: [monitoring] }
+
+- name: Docker + ứng dụng (chỉ trên VM thật – container không chạy được docker lồng nhau)
+  hosts: all
+  become: true
+  pre_tasks:
+    - name: Bỏ qua host là container
+      ansible.builtin.meta: end_host
+      when: is_container | bool
+  roles:
+    - { role: docker, tags: [docker] }
+    - { role: app, tags: [app] }

@@ -1,0 +1,10 @@
+# ⚠️ Dockerfile "ngây thơ" – CỐ Ý viết sai nhiều chỗ. Đừng dùng cho production!
+# Nhiệm vụ của bạn (Bài 1): build, đo, rồi liệt kê ít nhất 8 vấn đề.
+FROM python:3.12
+WORKDIR /app
+COPY . .
+RUN pip install -r requirements.txt
+RUN pip install pytest ruff
+ENV DATABASE_URL=postgresql+psycopg://shop:SuperSecret123@db:5432/shop
+EXPOSE 8000
+CMD uvicorn shopmini.main:app --host 0.0.0.0 --port 8000 --app-dir src --reload

@@ -1,0 +1,24 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: shopmini-dev
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+spec:
+  project: shop
+  source:
+    repoURL: https://github.com/YOUR_GITHUB_USER/devops-labs.git
+    targetRevision: main
+    path: lab06-gitops-argocd/gitops/envs/dev
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: shop-dev
+  syncPolicy:
+    automated:
+      prune: true        # xóa tài nguyên đã bị xóa khỏi Git
+      selfHeal: true     # sửa drift do ai đó kubectl edit tay
+    syncOptions: [CreateNamespace=false, ServerSideApply=true]
+    retry:
+      limit: 5
+      backoff: { duration: 10s, factor: 2, maxDuration: 3m }

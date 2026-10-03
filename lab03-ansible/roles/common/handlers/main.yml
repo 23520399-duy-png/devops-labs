@@ -1,0 +1,6 @@
+---
+- name: Restart journald
+  ansible.builtin.systemd_service:
+    name: systemd-journald
+    state: restarted
+  when: has_systemd and not is_container

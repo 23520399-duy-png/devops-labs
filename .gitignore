@@ -1,0 +1,30 @@
+# Secrets & cấu hình cục bộ – KHÔNG commit
+.env
+**/db.env
+**/backend.hcl
+**/terraform.tfvars
+*.pem
+.vault_pass
+# Terraform
+**/.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+tfplan
+crash.log
+.terraform.lock.hcl.bak
+# Python
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
+.ruff_cache/
+coverage.xml
+junit.xml
+*.db
+# Ansible
+lab03-ansible/.facts_cache/
+# Khác
+.DS_Store
+*.swp
+.coverage

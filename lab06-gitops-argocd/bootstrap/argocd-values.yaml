@@ -1,0 +1,16 @@
+# Giá trị Helm cho Argo CD trên kind (môi trường học – tắt TLS ở server, truy cập qua ingress-nginx)
+configs:
+  params:
+    server.insecure: true
+  cm:
+    timeout.reconciliation: 60s          # mặc định 180s – rút ngắn để thấy kết quả nhanh khi học
+    kustomize.buildOptions: --load-restrictor LoadRestrictionsNone
+server:
+  ingress:
+    enabled: true
+    ingressClassName: nginx
+    hostname: argocd.127.0.0.1.nip.io
+dex:
+  enabled: false
+notifications:
+  enabled: false

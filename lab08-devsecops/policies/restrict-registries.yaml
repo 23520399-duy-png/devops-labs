@@ -1,0 +1,20 @@
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: restrict-image-registries
+  annotations:
+    policies.kyverno.io/title: Chỉ cho phép registry tin cậy
+spec:
+  background: true
+  rules:
+    - name: allowed-registries
+      match:
+        any:
+          - resources: { kinds: [Pod], namespaces: ["shop-*"] }
+      validate:
+        failureAction: Enforce
+        message: "Image phải đến từ ghcr.io/YOUR_GITHUB_USER/ hoặc image chính thức postgres/redis."
+        pattern:
+          spec:
+            containers:
+              - image: "ghcr.io/YOUR_GITHUB_USER/* | postgres:* | redis:* | docker.io/library/postgres:* | docker.io/library/redis:*"

@@ -1,0 +1,7 @@
+# Copy vào gốc repo. Dùng bộ rule mặc định + bỏ qua thư mục mẫu lỗ hổng có chủ đích.
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Mẫu lỗ hổng phục vụ học tập (Lab 08)"
+paths = ['''lab08-devsecops/vuln-samples/.*''']

@@ -1,0 +1,25 @@
+# Chỉ áp dụng TRONG CLUSTER (CLI offline không xác minh chữ ký được).
+# Image shopmini phải được ký keyless bởi workflow trong repo của bạn (Sigstore / Fulcio / Rekor).
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: verify-shopmini-signature
+spec:
+  webhookTimeoutSeconds: 30
+  background: false
+  rules:
+    - name: cosign-keyless-github-actions
+      match:
+        any:
+          - resources: { kinds: [Pod], namespaces: ["shop-*"] }
+      verifyImages:
+        - imageReferences: ["ghcr.io/YOUR_GITHUB_USER/shopmini*"]
+          failureAction: Enforce
+          mutateDigest: true        # đổi tag → digest đã xác minh (chống "tag bị ghi đè")
+          verifyDigest: true
+          attestors:
+            - entries:
+                - keyless:
+                    issuer: https://token.actions.githubusercontent.com
+                    subjectRegExp: "^https://github.com/YOUR_GITHUB_USER/devops-labs/\\.github/workflows/security\\.yml@refs/heads/main$"
+                    rekor: { url: https://rekor.sigstore.dev }

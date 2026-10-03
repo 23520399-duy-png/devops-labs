@@ -1,0 +1,5 @@
+# Copy vào gốc repo. Checkov đọc file này khi chạy (config_file trong workflow).
+skip-path:
+  - lab08-devsecops/vuln-samples
+# skip-check:
+#   - CKV_AWS_2    # ALB listener HTTP – lý do: ... (Bài 3)

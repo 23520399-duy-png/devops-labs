@@ -1,0 +1,39 @@
+# Copy vào <repo>/.github/workflows/promote.yml
+# Promote một tag đã chạy tốt ở dev lên prod bằng Pull Request (cần người duyệt merge).
+name: promote-to-prod
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Image tag đã kiểm chứng ở dev (vd sha-abc1234 hoặc 1.1.0)"
+        required: true
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  promote:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: imranismail/setup-kustomize@v2
+      - name: Đổi tag cho prod
+        env:
+          TAG: ${{ inputs.tag }}
+          OWNER: ${{ github.repository_owner }}
+        run: |
+          OWNER_LC=$(echo "$OWNER" | tr '[:upper:]' '[:lower:]')
+          cd lab06-gitops-argocd/gitops/envs/prod
+          kustomize edit set image "shopmini=ghcr.io/${OWNER_LC}/shopmini:${TAG}"
+      - uses: peter-evans/create-pull-request@v7
+        with:
+          branch: promote/prod-${{ inputs.tag }}
+          title: "deploy(prod): shopmini ${{ inputs.tag }}"
+          body: |
+            Promote `${{ inputs.tag }}` từ dev lên prod.
+            - [ ] Đã kiểm tra dashboard dev (lỗi, latency) ít nhất 15 phút
+            - [ ] Có kế hoạch rollback (git revert PR này)
+          commit-message: "deploy(prod): shopmini ${{ inputs.tag }}"
+          labels: deploy-prod

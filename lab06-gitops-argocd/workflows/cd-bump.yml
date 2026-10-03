@@ -1,0 +1,49 @@
+# Copy vào <repo>/.github/workflows/cd-bump.yml
+# Khi workflow "ci" chạy xanh trên main → ghi tag image mới vào môi trường dev trong Git.
+# Argo CD (pull-based) sẽ tự thấy commit này và deploy. CI KHÔNG cần credential của cluster.
+name: cd-bump-dev
+
+on:
+  workflow_run:
+    workflows: [ci]
+    types: [completed]
+    branches: [main]
+
+# Push bằng DEPLOY KEY (không dùng GITHUB_TOKEN) vì nhánh main được ruleset bảo vệ ở Lab 04;
+# trong ruleset, thêm "Deploy keys" vào Bypass list. Xem README Bài 4.
+permissions:
+  contents: read
+
+concurrency:
+  group: cd-bump
+  cancel-in-progress: false
+
+jobs:
+  bump:
+    if: github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          ssh-key: ${{ secrets.GITOPS_DEPLOY_KEY }}
+      - uses: imranismail/setup-kustomize@v2
+      - name: Cập nhật image tag cho dev
+        env:
+          SHA: ${{ github.event.workflow_run.head_sha }}
+          OWNER: ${{ github.repository_owner }}
+        run: |
+          OWNER_LC=$(echo "$OWNER" | tr '[:upper:]' '[:lower:]')
+          TAG="sha-${SHA::7}"
+          cd lab06-gitops-argocd/gitops/envs/dev
+          kustomize edit set image "shopmini=ghcr.io/${OWNER_LC}/shopmini:${TAG}"
+          echo "TAG=${TAG}" >> "$GITHUB_ENV"
+          git diff --stat
+      - name: Commit & push
+        run: |
+          git config user.name  "gitops-bot"
+          git config user.email "gitops-bot@users.noreply.github.com"
+          git add lab06-gitops-argocd/gitops/envs/dev/kustomization.yaml
+          git diff --cached --quiet && { echo "Không có thay đổi"; exit 0; }
+          git commit -m "chore(dev): deploy shopmini ${TAG} [skip ci]"
+          git push

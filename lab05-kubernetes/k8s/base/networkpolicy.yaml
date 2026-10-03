@@ -1,0 +1,73 @@
+# Zero-trust trong namespace: chặn mọi thứ, rồi mở đúng các luồng cần thiết.
+# Policy chọn pod api theo nhãn component=api (không kèm name) để pod thử nghiệm trong tests/
+# mang nhãn này không bị ReplicaSet của Deployment "nhận nuôi" rồi xóa.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-all
+spec:
+  podSelector: {}
+  policyTypes: [Ingress, Egress]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-dns-egress
+spec:
+  podSelector: {}
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels: { kubernetes.io/metadata.name: kube-system }
+          podSelector:
+            matchLabels: { k8s-app: kube-dns }
+      ports:
+        - { protocol: UDP, port: 53 }
+        - { protocol: TCP, port: 53 }
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: api-ingress-from-ingress-nginx
+spec:
+  podSelector:
+    matchLabels: { app.kubernetes.io/component: api }
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels: { kubernetes.io/metadata.name: ingress-nginx }
+      ports:
+        - { protocol: TCP, port: 8000 }
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: api-egress-to-data
+spec:
+  podSelector:
+    matchLabels: { app.kubernetes.io/component: api }
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - podSelector: { matchLabels: { app.kubernetes.io/name: postgres } }
+      ports: [{ protocol: TCP, port: 5432 }]
+    - to:
+        - podSelector: { matchLabels: { app.kubernetes.io/name: redis } }
+      ports: [{ protocol: TCP, port: 6379 }]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: postgres-ingress-from-api
+spec:
+  podSelector:
+    matchLabels: { app.kubernetes.io/name: postgres }
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector: { matchLabels: { app.kubernetes.io/component: api } }
+      ports: [{ protocol: TCP, port: 5432 }]
+# TODO (Bài 4): viết policy "redis-ingress-from-api" – hiện tại redis đang bị default-deny chặn,
+# nên /readyz của api sẽ báo redis FAIL cho tới khi bạn viết xong policy này.

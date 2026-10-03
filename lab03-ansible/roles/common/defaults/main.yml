@@ -1,0 +1,4 @@
+---
+common_packages_debian: [sudo, curl, jq, htop, vim-tiny, ca-certificates, tar, unzip, gnupg]
+common_packages_redhat: [sudo, shadow-utils, jq, vim-minimal, ca-certificates, tar, unzip, gnupg2]
+common_journald_max_use: 200M

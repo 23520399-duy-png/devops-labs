@@ -1,0 +1,11 @@
+---
+- name: Reload sshd
+  ansible.builtin.service:
+    name: "{{ 'ssh' if ansible_os_family == 'Debian' else 'sshd' }}"
+    state: reloaded
+  when: has_systemd and not is_container
+
+- name: Apply sysctl
+  ansible.builtin.command: sysctl --system
+  changed_when: true
+  when: not is_container

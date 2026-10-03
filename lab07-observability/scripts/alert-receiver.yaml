@@ -1,0 +1,44 @@
+# "Người trực" giả lập: in mọi alert Alertmanager gửi tới ra stdout (xem bằng kubectl logs).
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: alert-receiver
+  namespace: monitoring
+spec:
+  replicas: 1
+  selector: { matchLabels: { app: alert-receiver } }
+  template:
+    metadata: { labels: { app: alert-receiver } }
+    spec:
+      securityContext: { runAsNonRoot: true, runAsUser: 65534, seccompProfile: { type: RuntimeDefault } }
+      containers:
+        - name: receiver
+          image: python:3.12-alpine
+          command: ["python", "-u", "-c"]
+          args:
+            - |
+              import json, http.server
+              class H(http.server.BaseHTTPRequestHandler):
+                  def do_POST(self):
+                      body = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
+                      for a in body.get("alerts", []):
+                          print(json.dumps({"status": a["status"], "alertname": a["labels"].get("alertname"),
+                                            "severity": a["labels"].get("severity"), "namespace": a["labels"].get("namespace"),
+                                            "summary": a.get("annotations", {}).get("summary")}, ensure_ascii=False))
+                      self.send_response(200); self.end_headers()
+                  def log_message(self, *a): pass
+              http.server.HTTPServer(("", 8080), H).serve_forever()
+          ports: [{ containerPort: 8080 }]
+          resources:
+            requests: { cpu: 10m, memory: 32Mi }
+            limits: { cpu: 100m, memory: 64Mi }
+          securityContext: { allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: { drop: ["ALL"] } }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: alert-receiver
+  namespace: monitoring
+spec:
+  selector: { app: alert-receiver }
+  ports: [{ port: 8080, targetPort: 8080 }]

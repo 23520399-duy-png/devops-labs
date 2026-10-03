@@ -1,0 +1,62 @@
+---
+- name: Cài gói nền (Debian/Ubuntu)
+  ansible.builtin.apt:
+    name: "{{ common_packages_debian }}"
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+  when: ansible_os_family == 'Debian'
+
+- name: Cài gói nền (Amazon Linux / RHEL)
+  ansible.builtin.dnf:
+    name: "{{ common_packages_redhat }}"
+    state: present
+  when: ansible_os_family == 'RedHat'
+
+- name: Đặt múi giờ (máy có systemd)
+  community.general.timezone:
+    name: "{{ timezone }}"
+  when: has_systemd and not is_container
+
+- name: Đặt múi giờ (container – chỉ đổi symlink)
+  ansible.builtin.file:
+    src: "/usr/share/zoneinfo/{{ timezone }}"
+    dest: /etc/localtime
+    state: link
+    force: true
+  when: is_container
+
+- name: Tạo user deploy
+  ansible.builtin.user:
+    name: "{{ deploy_user }}"
+    shell: /bin/bash
+    create_home: true
+    state: present
+
+- name: SSH public key cho user deploy
+  ansible.posix.authorized_key:
+    user: "{{ deploy_user }}"
+    key: "{{ deploy_user_pubkey }}"
+    exclusive: true
+
+- name: Sudo không mật khẩu cho deploy (kiểm tra cú pháp bằng visudo trước khi ghi)
+  ansible.builtin.copy:
+    dest: "/etc/sudoers.d/90-{{ deploy_user }}"
+    content: "{{ deploy_user }} ALL=(ALL) NOPASSWD:ALL\n"
+    owner: root
+    group: root
+    mode: "0440"
+    validate: /usr/sbin/visudo -cf %s
+
+- name: Giới hạn dung lượng journald
+  ansible.builtin.template:
+    src: journald-limits.conf.j2
+    dest: /etc/systemd/journald.conf.d/90-limits.conf
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Restart journald
+  when: has_systemd
+
+- name: Cập nhật bảo mật tự động
+  ansible.builtin.include_tasks: "auto-updates-{{ ansible_os_family | lower }}.yml"

@@ -1,0 +1,58 @@
+---
+- name: Đảm bảo có OpenSSH server
+  ansible.builtin.package:
+    name: openssh-server
+    state: present
+
+- name: Tạo host key nếu chưa có (container mới tạo chưa có key)
+  ansible.builtin.command: ssh-keygen -A
+  args:
+    creates: /etc/ssh/ssh_host_ed25519_key
+
+- name: Thư mục drop-in cho sshd
+  ansible.builtin.file:
+    path: /etc/ssh/sshd_config.d
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Cấu hình SSH an toàn (kiểm tra bằng sshd -t trước khi áp dụng)
+  ansible.builtin.template:
+    src: sshd-hardening.conf.j2
+    dest: /etc/ssh/sshd_config.d/10-hardening.conf
+    owner: root
+    group: root
+    mode: "0600"
+    validate: /usr/sbin/sshd -t -f %s
+  notify: Reload sshd
+
+- name: Đảm bảo sshd_config chính có Include thư mục drop-in
+  ansible.builtin.lineinfile:
+    path: /etc/ssh/sshd_config
+    line: Include /etc/ssh/sshd_config.d/*.conf
+    insertbefore: BOF
+    state: present
+  notify: Reload sshd
+
+- name: Ghi tham số kernel hardening
+  ansible.builtin.template:
+    src: sysctl-hardening.conf.j2
+    dest: /etc/sysctl.d/90-hardening.conf
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Apply sysctl
+
+- name: Gỡ các gói không an toàn
+  ansible.builtin.package:
+    name: "{{ hardening_remove_packages }}"
+    state: absent
+
+- name: Banner cảnh báo khi đăng nhập
+  ansible.builtin.copy:
+    dest: /etc/issue.net
+    content: "Authorized access only. All activity is logged.\n"
+    owner: root
+    group: root
+    mode: "0644"

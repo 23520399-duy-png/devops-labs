@@ -1,0 +1,25 @@
+#!/bin/bash
+# Chạy MỘT lần khi instance khởi động lần đầu. Log: /var/log/cloud-init-output.log
+set -euxo pipefail
+
+dnf install -y docker
+systemctl enable --now docker
+
+%{ if use_ecr ~}
+REGISTRY="$(echo "${image}" | cut -d/ -f1)"
+for i in $(seq 1 10); do
+  aws ecr get-login-password --region ${region} | docker login --username AWS --password-stdin "$REGISTRY" && break
+  sleep 6
+done
+%{ endif ~}
+
+for i in $(seq 1 10); do docker pull "${image}" && break; sleep 6; done
+
+docker run -d --name shopmini --restart unless-stopped \
+  -p ${app_port}:8000 \
+  --read-only --tmpfs /tmp \
+  -e DATABASE_URL="sqlite:////tmp/shopmini.db" \
+  -e APP_VERSION="${app_version}" \
+  -e CHAOS_ENABLED="true" \
+  --log-driver json-file --log-opt max-size=10m --log-opt max-file=3 \
+  "${image}"

@@ -1,0 +1,17 @@
+# Dynamic inventory: tự tìm EC2 theo tag – không cần sửa IP bằng tay.
+# Kiểm tra: ansible-inventory -i inventories/aws/aws_ec2.yml --graph
+plugin: amazon.aws.aws_ec2
+regions: [us-east-1]
+filters:
+  tag:Project: devops-labs
+  tag:Lab: "03"
+  instance-state-name: running
+keyed_groups:
+  - key: tags.Role          # tag Role=web → group "role_web"
+    prefix: role
+  - key: tags.Os
+    prefix: os
+hostnames:
+  - tag:Name
+compose:
+  ansible_host: public_ip_address

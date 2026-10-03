@@ -1,0 +1,11 @@
+# Thêm khối này vào "patches" của lab06-gitops-argocd/gitops/envs/dev/kustomization.yaml
+  - target: { kind: Deployment, name: shopmini }
+    patch: |-
+      - op: replace
+        path: /spec/template/spec/containers/0/image
+        value: nginx:latest
+      - op: add
+        path: /spec/template/spec/containers/0/securityContext/privileged
+        value: true
+      - op: remove
+        path: /spec/template/spec/containers/0/resources

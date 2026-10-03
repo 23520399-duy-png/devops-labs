@@ -1,0 +1,190 @@
+# CI cho shopmini – copy file này vào <repo>/.github/workflows/ci.yml
+name: ci
+
+on:
+  pull_request:
+    paths: ["app/**", ".github/workflows/ci.yml"]
+  push:
+    branches: [main]
+    tags: ["v*.*.*"]
+    paths: ["app/**", ".github/workflows/ci.yml"]
+  workflow_dispatch:
+
+# Hủy lần chạy cũ của cùng branch/PR khi có commit mới → tiết kiệm phút CI
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+# Quyền tối thiểu mặc định; job nào cần thêm thì khai báo riêng
+permissions:
+  contents: read
+
+env:
+  IMAGE: ghcr.io/${{ github.repository_owner }}/shopmini
+  PYTHON_VERSION: "3.12"
+
+defaults:
+  run:
+    working-directory: app
+
+jobs:
+  lint-test:
+    name: Lint & unit test
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: app/requirements*.txt
+      - run: pip install -r requirements-dev.txt
+      - name: Ruff (lint + security rules)
+        run: ruff check . --output-format=github
+      - name: Pytest + coverage gate
+        run: pytest -q --cov=shopmini --cov-report=xml --cov-fail-under=80 --junitxml=junit.xml
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test-reports
+          path: |
+            app/junit.xml
+            app/coverage.xml
+
+  dockerfile-lint:
+    name: Hadolint
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hadolint/hadolint-action@v3.1.0
+        with:
+          dockerfile: app/Dockerfile
+          failure-threshold: error   # TODO: hạ xuống "warning" sau khi sửa hết cảnh báo
+
+  build-scan-smoke:
+    name: Build → smoke test → scan → push
+    runs-on: ubuntu-latest
+    needs: [lint-test, dockerfile-lint]
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      packages: write          # push lên GHCR
+      security-events: write   # upload SARIF lên tab Security
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: shop
+          POSTGRES_PASSWORD: ci-only-password
+          POSTGRES_DB: shop
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U shop" --health-interval 5s --health-timeout 3s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Tính tag image (sha, branch, semver)
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.IMAGE }}
+          tags: |
+            type=sha,format=short,prefix=sha-
+            type=ref,event=branch
+            type=ref,event=pr
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+
+      - name: Build (load vào docker local để test)
+        uses: docker/build-push-action@v6
+        with:
+          context: app
+          load: true
+          tags: shopmini:ci
+          build-args: APP_VERSION=${{ steps.meta.outputs.version }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Smoke test với Postgres thật
+        run: |
+          docker run -d --name app --network host \
+            -e DATABASE_URL=postgresql+psycopg://shop:ci-only-password@localhost:5432/shop \
+            -e PORT=8000 shopmini:ci
+          for _ in $(seq 1 30); do curl -fsS localhost:8000/readyz && break; sleep 2; done
+          curl -fsS -XPOST localhost:8000/orders -H 'content-type: application/json' \
+               -d '{"customer":"ci","item":"smoke","quantity":1,"price":1}'
+          curl -fsS localhost:8000/orders | grep -q smoke
+        working-directory: .
+
+      - name: Trivy – chặn nếu có CVE CRITICAL đã có bản vá
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: shopmini:ci
+          severity: CRITICAL
+          ignore-unfixed: true
+          exit-code: "1"
+          format: table
+
+      - name: Trivy – báo cáo SARIF (HIGH+CRITICAL) lên tab Security
+        if: always()
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: shopmini:ci
+          severity: HIGH,CRITICAL
+          format: sarif
+          output: trivy.sarif
+          exit-code: "0"
+      - uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: trivy.sarif
+
+      - name: Login GHCR
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Push (kèm SBOM + provenance)
+        if: github.event_name != 'pull_request'
+        uses: docker/build-push-action@v6
+        with:
+          context: app
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: APP_VERSION=${{ steps.meta.outputs.version }}
+          cache-from: type=gha
+          sbom: true
+          provenance: mode=max
+
+      - name: Tóm tắt
+        if: always()
+        working-directory: .
+        run: |
+          {
+            echo "### Image"
+            echo '```'
+            echo "${{ steps.meta.outputs.tags }}"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  release:
+    name: GitHub Release
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build-scan-smoke
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true

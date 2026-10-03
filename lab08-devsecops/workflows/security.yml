@@ -1,0 +1,123 @@
+# Copy vào <repo>/.github/workflows/security.yml
+# Cổng bảo mật "shift-left": chặn PR có secret, lỗ hổng code, dependency, IaC sai, manifest vi phạm policy.
+name: security
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  schedule:
+    - cron: "0 1 * * 1"        # quét lại mỗi thứ Hai (CVE mới xuất hiện cả khi code không đổi)
+
+permissions:
+  contents: read
+
+jobs:
+  secrets:
+    name: Secret scan (gitleaks)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }          # quét toàn bộ lịch sử, không chỉ commit cuối
+      - uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  sast:
+    name: SAST (semgrep)
+    runs-on: ubuntu-latest
+    container: semgrep/semgrep:latest
+    permissions: { contents: read, security-events: write }
+    steps:
+      - uses: actions/checkout@v4
+      - run: semgrep scan --config p/python --config p/dockerfile --config p/secrets --exclude lab08-devsecops/vuln-samples --sarif --output semgrep.sarif --error
+      - uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with: { sarif_file: semgrep.sarif, category: semgrep }
+
+  sca-iac:
+    name: Dependencies & IaC (trivy, checkov)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Trivy fs – dependency CVE (requirements.txt…)
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          scan-type: fs
+          scan-ref: .
+          scanners: vuln
+          skip-dirs: lab08-devsecops/vuln-samples
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: "1"
+      - name: Trivy config – misconfig Dockerfile/K8s/Terraform
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          scan-type: config
+          scan-ref: .
+          skip-dirs: lab08-devsecops/vuln-samples
+          severity: HIGH,CRITICAL
+          exit-code: "1"
+          trivyignores: .trivyignore
+      - name: Checkov – Terraform
+        uses: bridgecrewio/checkov-action@v12
+        with:
+          directory: .
+          framework: terraform
+          soft_fail_on: LOW,MEDIUM
+          skip_path: lab08-devsecops/vuln-samples
+          config_file: .checkov.yaml
+
+  k8s-policy:
+    name: Manifest policy (kubeconform + kyverno CLI)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: imranismail/setup-kustomize@v2
+      - name: Cài kubeconform & kyverno CLI
+        run: |
+          curl -sSL https://github.com/yannh/kubeconform/releases/latest/download/kubeconform-linux-amd64.tar.gz | tar -xz kubeconform
+          TAG=$(curl -s https://api.github.com/repos/kyverno/kyverno/releases/latest | jq -r .tag_name)
+          curl -sSL "https://github.com/kyverno/kyverno/releases/download/${TAG}/kyverno-cli_${TAG}_linux_x86_64.tar.gz" | tar -xz kyverno
+      - name: Render & kiểm tra
+        run: |
+          for env in dev prod; do
+            kustomize build --load-restrictor LoadRestrictionsNone lab06-gitops-argocd/gitops/envs/$env > /tmp/$env.yaml
+            ./kubeconform -strict -summary -ignore-missing-schemas /tmp/$env.yaml
+            ./kyverno apply lab08-devsecops/policies/ --resource /tmp/$env.yaml --remove-color | tee /tmp/kyverno-$env.txt
+            if grep -qE "fail: [1-9]" /tmp/kyverno-$env.txt; then echo "::error::Vi phạm policy ở $env"; exit 1; fi
+          done
+
+  sign:
+    name: Ký image (cosign keyless) + attest SBOM
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    needs: [secrets, sast, sca-iac, k8s-policy]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+      id-token: write          # OIDC token cho Sigstore (không cần quản lý private key)
+    steps:
+      - uses: sigstore/cosign-installer@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Lấy digest của image sha-<commit> (do workflow ci build)
+        id: img
+        run: |
+          OWNER=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
+          REF="ghcr.io/${OWNER}/shopmini:sha-${GITHUB_SHA::7}"
+          for _ in $(seq 1 30); do docker buildx imagetools inspect "$REF" >/dev/null 2>&1 && break; sleep 20; done
+          DIGEST=$(docker buildx imagetools inspect "$REF" --format '{{json .Manifest}}' | jq -r .digest)
+          echo "ref=ghcr.io/${OWNER}/shopmini@${DIGEST}" >> "$GITHUB_OUTPUT"
+      - name: cosign sign (ký theo DIGEST, không theo tag)
+        run: cosign sign --yes "${{ steps.img.outputs.ref }}"
+      - name: SBOM (syft) + attest
+        uses: anchore/sbom-action@v0
+        with:
+          image: ${{ steps.img.outputs.ref }}
+          format: spdx-json
+          output-file: sbom.spdx.json
+      - run: cosign attest --yes --type spdxjson --predicate sbom.spdx.json "${{ steps.img.outputs.ref }}"

@@ -1,0 +1,37 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: shop-prod
+resources:
+  - namespace.yaml
+  - ../../../../lab05-kubernetes/k8s/base
+  - sealed-db.yaml
+  - rollout.yaml               # Argo Rollouts canary (workloadRef tới Deployment)
+  - netpol-rollouts.yaml       # cho controller Argo Rollouts gọi canary khi phân tích
+images:
+  - name: shopmini
+    newName: ghcr.io/YOUR_GITHUB_USER/shopmini
+    newTag: "1.0.0"            # chỉ đổi qua Pull Request (workflow promote.yml)
+patches:
+  - target: { kind: Deployment, name: shopmini }
+    patch: |-
+      - op: add
+        path: /spec/template/metadata/labels/app.kubernetes.io~1version
+        value: prod
+  - target: { kind: HorizontalPodAutoscaler, name: shopmini }
+    patch: |-
+      - op: replace
+        path: /spec/scaleTargetRef
+        value: { apiVersion: argoproj.io/v1alpha1, kind: Rollout, name: shopmini }
+      - op: replace
+        path: /spec/minReplicas
+        value: 3
+  - target: { kind: PodDisruptionBudget, name: shopmini }
+    patch: |-
+      - op: replace
+        path: /spec/minAvailable
+        value: 2
+  - target: { kind: Ingress, name: shopmini }
+    patch: |-
+      - op: replace
+        path: /spec/rules/0/host
+        value: shop-prod.127.0.0.1.nip.io
