@@ -1,0 +1,5 @@
+{
+    "Instance": "i-069921d72b3bfdfec",
+    "Status": "Success",
+    "Output": "user: root\nip-172-31-36-105.ec2.internal\nNAME=\"Amazon Linux\"\nVERSION=\"2023\"\nIMDSv1 status: 401\nIMDSv2 instance-id: i-069921d72b3bfdfec\nIAM role: LabRole\n"
+}
