@@ -32,7 +32,8 @@ section "4. Git & GitHub"
 if [ -n "$(git config --global user.name)" ] && [ -n "$(git config --global user.email)" ]; then pass "git user.name/email đã cấu hình"
 else fail "chưa cấu hình git user.name / user.email"; fi
 if ls "$HOME"/.ssh/id_ed25519.pub >/dev/null 2>&1; then pass "có SSH key ed25519"; else fail "chưa có ~/.ssh/id_ed25519 (ssh-keygen -t ed25519)"; fi
-if ssh -o BatchMode=yes -o ConnectTimeout=5 -T git@github.com 2>&1 | grep -q "successfully authenticated"; then pass "SSH tới GitHub thành công"
+gh_out=$(ssh -o BatchMode=yes -o ConnectTimeout=5 -T git@github.com 2>&1 || true)   # GitHub luôn trả exit 1
+if printf '%s' "$gh_out" | grep -q "successfully authenticated"; then pass "SSH tới GitHub thành công"
 else fail "SSH tới GitHub chưa được (thêm public key vào GitHub → Settings → SSH keys)"; fi
 
 section "5. Đồng hồ hệ thống (lệch giờ → lỗi chữ ký AWS)"
