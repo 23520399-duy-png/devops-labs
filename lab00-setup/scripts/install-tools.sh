@@ -45,7 +45,8 @@ if ! have terraform; then
 fi
 if ! have tflint; then
   log "tflint"
-  curl -fsSL https://raw.githubusercontent.com/terraform-linters/tflint/master/install_linux.sh | bash
+  curl -fsSL "https://github.com/terraform-linters/tflint/releases/latest/download/tflint_linux_${ARCH}.zip" -o "$TMP/tflint.zip"
+  unzip -o -q "$TMP/tflint.zip" -d "$TMP" && install_bin "$TMP/tflint" tflint
 fi
 
 # ---------------------------------------------------------------- Kubernetes
