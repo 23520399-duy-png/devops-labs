@@ -34,6 +34,7 @@ aws configure set aws_secret_access_key "$SK" --profile "$PROFILE"
 aws configure set aws_session_token     "$ST" --profile "$PROFILE"
 aws configure set region                "$REGION" --profile "$PROFILE"
 aws configure set output                json --profile "$PROFILE"
+chmod 700 "$HOME/.aws" && chmod 600 "$HOME/.aws/credentials" "$HOME/.aws/config"   # chỉ user hiện tại được đọc
 
 echo "→ Đã ghi profile [$PROFILE] (region $REGION). Kiểm tra danh tính:"
 aws sts get-caller-identity --profile "$PROFILE" --query '{Account:Account,Arn:Arn}' --output table
