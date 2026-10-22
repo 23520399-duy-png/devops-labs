@@ -11,7 +11,14 @@ TMP="$(mktemp -d)"; trap 'rm -rf "$TMP"' EXIT
 
 log()  { printf '\e[1;34m==>\e[0m %s\n' "$*"; }
 have() { [ "$FORCE" = "0" ] && command -v "$1" >/dev/null 2>&1; }
-latest_tag() { curl -fsSL "https://api.github.com/repos/$1/releases/latest" | jq -r .tag_name; }
+# Lấy tag release mới nhất qua redirect của github.com (KHÔNG dùng api.github.com:
+# API giới hạn 60 request/giờ/IP khi chưa đăng nhập → dễ dính HTTP 403).
+latest_tag() {
+  local url
+  url="$(curl -fsSLI -o /dev/null -w '%{url_effective}' "https://github.com/$1/releases/latest")" \
+    || { echo "✘ không lấy được release mới nhất của $1" >&2; return 1; }
+  printf '%s\n' "${url##*/}"
+}
 install_bin() { sudo install -m 0755 "$1" "$BIN/$2"; }
 
 log "Gói hệ thống cơ bản"
